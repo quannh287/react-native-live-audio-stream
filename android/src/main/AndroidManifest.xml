@@ -2,4 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           package="com.imxiqi.rnliveaudiostream">
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <service
+          android:name="com.imxiqi.rnliveaudiostream.RNLiveAudioStreamService"
+          android:enabled="true"
+          android:exported="false"
+          android:foregroundServiceType="microphone" />
+    </application>
 </manifest>
