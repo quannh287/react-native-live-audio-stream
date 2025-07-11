@@ -31,7 +31,7 @@ This library is forked from [xiqi/react-native-live-audio-stream](https://github
 
 ## Install
 ```
-yarn add react-native-live-audio-stream
+yarn add react-native-live-audio-record
 cd ios
 pod install
 ```
@@ -89,7 +89,7 @@ This library now supports **background audio recording** on both platforms:
 
 ## Usage
 ```javascript
-import LiveAudioStream from 'react-native-live-audio-stream';
+import LiveAudioStream from 'react-native-live-audio-record';
 // yarn add buffer
 import { Buffer } from 'buffer';
 
@@ -122,7 +122,7 @@ Feel free to submit issues and pull requests. For major changes, please open an 
 ### Development Setup
 ```bash
 git clone <your-fork>
-cd react-native-live-audio-stream
+cd react-native-live-audio-record
 npm install
 
 # Test on example project
@@ -156,5 +156,5 @@ MIT
 ## Support
 
 - 📖 [Background Recording Guide](./BACKGROUND_RECORDING.md) - Detailed technical documentation
-- 🐛 [Issues](https://github.com/your-repo/react-native-live-audio-stream/issues) - Bug reports and feature requests
-- 💬 [Discussions](https://github.com/your-repo/react-native-live-audio-stream/discussions) - Community support
+- 🐛 [Issues](https://github.com/your-repo/react-native-live-audio-record/issues) - Bug reports and feature requests
+- 💬 [Discussions](https://github.com/your-repo/react-native-live-audio-record/discussions) - Community support
