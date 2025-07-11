@@ -1,10 +1,11 @@
 {
-  "name": "react-native-live-audio-stream",
-  "version": "1.1.1",
-  "description": "Get live audio stream data for React Native",
+  "name": "react-native-live-audio-record",
+  "version": "1.0.0",
+  "private": false,
+  "description": "Get live audio recorder data for React Native",
   "license": "MIT",
   "keywords": [
-    "live stream",
+    "live recorder",
     "react-native",
     "audio",
     "live",
@@ -12,22 +13,21 @@
     "voice"
   ],
   "main": "index.js",
-  "homepage": "https://github.com/xiqi/react-native-live-audio-stream",
+  "types": "index.d.ts",
+  "homepage": "https://github.com/quannh287/react-native-live-audio-stream",
   "bugs": {
-    "url": "https://github.com/xiqi/react-native-live-audio-stream/issues",
-    "email": "me@imxiqi.com"
+    "url": "https://github.com/quannh287/react-native-live-audio-stream/issues",
+    "email": "quannh2871@gmail.com"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/xiqi/react-native-live-audio-stream.git"
+    "url": "git+https://github.com/quannh287/react-native-live-audio-stream.git"
   },
-  "author": "Qi Xi <me@imxiqi.com> (https://www.imxiqi.com/)",
+  "author": "Quan Nguyen Hong <quannh2871@gmail.com> (https://github.com/quannh287)",
   "devDependencies": {
     "babel-eslint": "^8.2.3",
     "eslint": "^4.19.1",
     "eslint-plugin-prettier": "^2.6.0",
     "prettier": "^1.12.0"
-  },
-  "dependencies": {},
-  "peerDependencies": {}
+  }
 }
