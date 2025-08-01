@@ -25,21 +25,12 @@ import java.util.Map;
 public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule {
 
     private final ReactApplicationContext reactContext;
-
-    // Audio parameters
-    private int sampleRate = 44100;
-    private int channels = 1;
-    private int bitsPerSample = 16;
-    private int audioSource = 6; // MediaRecorder.AudioSource.VOICE_RECOGNITION
-    private int bufferSize = 2048;
-
-    // Notification parameters
-    private String notificationTitle = "Audio Recording";
-    private String notificationContent = "Recording audio in background";
+    private final AudioConfig audioConfig;
 
     public RNLiveAudioStreamModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.reactContext = reactContext;
+        this.audioConfig = AudioConfig.getInstance();
         // Set ReactContext for AudioEventEmitter
         AudioEventEmitter.setReactContext(reactContext);
     }
@@ -53,36 +44,55 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule {
     @Override
     public Map<String, Object> getConstants() {
         final Map<String, Object> constants = new HashMap<>();
-        constants.put("SAMPLE_RATE", sampleRate);
-        constants.put("CHANNELS", channels);
-        constants.put("BITS_PER_SAMPLE", bitsPerSample);
-        constants.put("AUDIO_SOURCE", audioSource);
-        constants.put("BUFFER_SIZE", bufferSize);
+        constants.put("SAMPLE_RATE", audioConfig.getSampleRate());
+        constants.put("CHANNELS", audioConfig.getChannels());
+        constants.put("BITS_PER_SAMPLE", audioConfig.getBitsPerSample());
+        constants.put("AUDIO_SOURCE", audioConfig.getAudioSource());
+        constants.put("BUFFER_SIZE", audioConfig.getBufferSize());
         return constants;
     }
 
     @ReactMethod
     public void init(ReadableMap options) {
         if (options.hasKey("sampleRate")) {
-            sampleRate = options.getInt("sampleRate");
+            audioConfig.setSampleRate(options.getInt("sampleRate"));
         }
         if (options.hasKey("channels")) {
-            channels = options.getInt("channels");
+            audioConfig.setChannels(options.getInt("channels"));
         }
         if (options.hasKey("bitsPerSample")) {
-            bitsPerSample = options.getInt("bitsPerSample");
+            audioConfig.setBitsPerSample(options.getInt("bitsPerSample"));
         }
         if (options.hasKey("audioSource")) {
-            audioSource = options.getInt("audioSource");
+            audioConfig.setAudioSource(options.getInt("audioSource"));
         }
         if (options.hasKey("bufferSize")) {
-            bufferSize = options.getInt("bufferSize");
+            audioConfig.setBufferSize(options.getInt("bufferSize"));
         }
         if (options.hasKey("notificationTitle")) {
-            notificationTitle = options.getString("notificationTitle");
+            audioConfig.setNotificationTitle(options.getString("notificationTitle"));
         }
         if (options.hasKey("notificationContent")) {
-            notificationContent = options.getString("notificationContent");
+            audioConfig.setNotificationContent(options.getString("notificationContent"));
+        }
+        if (options.hasKey("notificationIcon")) {
+            // Có thể truyền resource name từ JS
+            String iconName = options.getString("notificationIcon");
+            if (iconName != null) {
+                int iconId = getResourceId(iconName, "drawable");
+                audioConfig.setNotificationIcon(iconId);
+            }
+        }
+    }
+
+    /**
+     * Helper method để get resource ID từ name
+     */
+    private int getResourceId(String name, String type) {
+        try {
+            return reactContext.getResources().getIdentifier(name, type, reactContext.getPackageName());
+        } catch (Exception e) {
+            return 0;
         }
     }
 
@@ -97,16 +107,7 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule {
 
         try {
             // Start foreground service
-            RNLiveAudioStreamService.startService(
-                    reactContext,
-                    sampleRate,
-                    channels,
-                    bitsPerSample,
-                    audioSource,
-                    bufferSize,
-                    notificationTitle,
-                    notificationContent
-            );
+            RNLiveAudioStreamService.startService(reactContext);
 
             AudioEventEmitter.sendRecordingState(true);
             promise.resolve("Started");
@@ -125,6 +126,16 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule {
         } catch (Exception e) {
             AudioEventEmitter.sendError(e.getMessage());
             promise.reject("STOP_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void resetConfig(Promise promise) {
+        try {
+            audioConfig.resetToDefaults();
+            promise.resolve("Config reset to defaults");
+        } catch (Exception e) {
+            promise.reject("RESET_ERROR", e.getMessage());
         }
     }
 
