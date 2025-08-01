@@ -1,4 +1,4 @@
-declare module "react-native-live-audio-stream" {
+declare module "react-native-live-audio-record" {
   export type AudioEvent = "data" | "recordingState" | "error";
   export type EventCallback<T> = (data: T) => void;
 
@@ -18,18 +18,29 @@ declare module "react-native-live-audio-stream" {
     removeAllListeners: () => void;
   }
 
+  export type AudioChannel = 1 | 2;
+  export type AudioBitsPerSample = 8 | 16;
+
   export interface Options {
+    /**
+     * - `44100 | 22050 | 16000 | 11025`
+     * Default: `44100`
+     */
     sampleRate: number;
     /**
-     * - `1 | 2`
+     * - 1: AudioFormat.CHANNEL_IN_MONO
+     * - 2: AudioFormat.CHANNEL_IN_STEREO
+     * Default: `1`
      */
-    channels: number;
+    channels: AudioChannel;
     /**
-     * - `8 | 16`
+     * - 8: AudioFormat.ENCODING_PCM_8BIT
+     * - 16: AudioFormat.ENCODING_PCM_16BIT
+     * Default: `16`
      */
-    bitsPerSample: number;
+    bitsPerSample: AudioBitsPerSample;
     /**
-     * - `6`
+     * - 6: VOICE_RECOGNITION
      */
     audioSource?: number;
     wavFile: string;
@@ -42,6 +53,12 @@ declare module "react-native-live-audio-stream" {
      * Content text for the notification shown when recording in background
      */
     notificationContent?: string;
+
+    /**
+     * Icon for the notification shown when recording in background
+     * Default: `ic_notification`
+     */
+    notificationIcon?: string;
   }
 
   const AudioRecord: IAudioRecord;

@@ -11,9 +11,11 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
-import android.media.MediaRecorder;
 import android.os.Build;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Base64;
 import android.util.Log;
@@ -22,10 +24,7 @@ import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 
-import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactContext;
-import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.modules.core.DeviceEventManagerModule;
 
 public class RNLiveAudioStreamService extends Service {
     private static final String TAG = "RNLiveAudioStreamService";
@@ -33,33 +32,20 @@ public class RNLiveAudioStreamService extends Service {
     private static final String CHANNEL_ID = "AudioRecordingChannel";
 
     private AudioRecord audioRecord;
-    private boolean isRecording = false;
+    private volatile boolean isRecording = false;
+    private volatile boolean isInitializing = false;
     private Thread recordingThread;
-    private ReactContext reactContext;
     private PowerManager.WakeLock wakeLock;
+    private AudioConfig audioConfig;
 
-    // Audio parameters
-    private int sampleRate = 44100;
-    private int channels = 1;
-    private int bitsPerSample = 16;
-    private int audioSource = MediaRecorder.AudioSource.VOICE_RECOGNITION;
-    private int bufferSize = 2048;
+    // Background thread cho audio operations
+    private HandlerThread audioHandlerThread;
+    private Handler audioHandler;
 
-    // Notification parameters
-    private String notificationTitle = "Audio Recording";
-    private String notificationContent = "Recording audio in background";
+    private Notification cachedNotification;
 
-    public static void startService(ReactContext context, int sampleRate, int channels,
-                                    int bitsPerSample, int audioSource, int bufferSize,
-                                    String notificationTitle, String notificationContent) {
+    public static void startService(ReactContext context) {
         Intent serviceIntent = new Intent(context, RNLiveAudioStreamService.class);
-        serviceIntent.putExtra("sampleRate", sampleRate);
-        serviceIntent.putExtra("channels", channels);
-        serviceIntent.putExtra("bitsPerSample", bitsPerSample);
-        serviceIntent.putExtra("audioSource", audioSource);
-        serviceIntent.putExtra("bufferSize", bufferSize);
-        serviceIntent.putExtra("notificationTitle", notificationTitle);
-        serviceIntent.putExtra("notificationContent", notificationContent);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(serviceIntent);
@@ -76,54 +62,53 @@ public class RNLiveAudioStreamService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        createNotificationChannel();
-
-        // Acquire wake lock to prevent CPU from sleeping during audio recording
-        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RNLiveAudioStream:WakeLock");
-        wakeLock.acquire();
-
-        Log.d(TAG, "Service created with wake lock");
+        // Lấy config từ singleton
+        audioConfig = AudioConfig.getInstance();
+        // Tạo background thread cho audio operations
+        audioHandlerThread = new HandlerThread("AudioServiceThread");
+        audioHandlerThread.start();
+        audioHandler = new Handler(audioHandlerThread.getLooper());
+        // Pre-create notification channel và notification để tránh delay
+        createNotificationChannelAsync();
+        preCreateNotification();
+        // Async wake lock acquisition
+        acquireWakeLockAsync();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null) {
-            sampleRate = intent.getIntExtra("sampleRate", 44100);
-            channels = intent.getIntExtra("channels", 1);
-            bitsPerSample = intent.getIntExtra("bitsPerSample", 16);
-            audioSource = intent.getIntExtra("audioSource", MediaRecorder.AudioSource.VOICE_RECOGNITION);
-            bufferSize = intent.getIntExtra("bufferSize", 2048);
-            notificationTitle = intent.getStringExtra("notificationTitle");
-            notificationContent = intent.getStringExtra("notificationContent");
-
-            // Use default values if null
-            if (notificationTitle == null) {
-                notificationTitle = "Audio Recording";
-            }
-            if (notificationContent == null) {
-                notificationContent = "Recording audio in background";
-            }
+        // Start foreground ngay lập tức với cached notification
+        if (cachedNotification != null) {
+            startForeground(NOTIFICATION_ID, cachedNotification);
+        } else {
+            // Fallback nếu chưa có cached notification
+            startForeground(NOTIFICATION_ID, createNotificationSync());
         }
 
-        startForeground(NOTIFICATION_ID, createNotification());
-        startRecording();
+        // Async start recording để không block main thread
+        startRecordingAsync();
 
-        return START_STICKY; // Service sẽ tự động restart nếu bị kill
+        return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
+
         stopRecording();
 
-        // Release wake lock
-        if (wakeLock != null && wakeLock.isHeld()) {
-            wakeLock.release();
-            wakeLock = null;
+        // Cleanup background thread
+        if (audioHandlerThread != null) {
+            audioHandlerThread.quitSafely();
+            try {
+                audioHandlerThread.join(1000); // Wait max 1 second
+            } catch (InterruptedException e) {
+                Log.w(TAG, "Interrupted while waiting for audio thread to finish");
+            }
         }
 
-        Log.d(TAG, "Service destroyed and wake lock released");
+        // Release wake lock
+        releaseWakeLockAsync();
     }
 
     @Nullable
@@ -132,128 +117,269 @@ public class RNLiveAudioStreamService extends Service {
         return null;
     }
 
-    private void createNotificationChannel() {
+    private void createNotificationChannelAsync() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID,
-                    "Audio Recording Service",
-                    NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("Recording audio in background");
+            // Chạy trên background thread
+            audioHandler.post(() -> {
+                NotificationChannel channel = new NotificationChannel(
+                        CHANNEL_ID,
+                        "Audio Recording Service",
+                        NotificationManager.IMPORTANCE_DEFAULT
+                );
+                channel.setDescription("Recording audio in background");
 
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
+                NotificationManager notificationManager = getSystemService(NotificationManager.class);
+                if (notificationManager != null) {
+                    notificationManager.createNotificationChannel(channel);
+                }
+            });
         }
     }
 
-    private Notification createNotification() {
-        Intent notificationIntent = new Intent(this, getMainActivityClass());
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-                this, 0, notificationIntent,
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0
-        );
+    private void preCreateNotification() {
+        // Pre-create notification trên background thread
+        audioHandler.post(() -> {
+            cachedNotification = createNotificationSync();
+            Log.d(TAG, "Notification pre-created successfully");
+        });
+    }
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle(notificationTitle)
-                .setContentText(notificationContent)
-                .setSmallIcon(android.R.drawable.presence_audio_online)
-                .setContentIntent(pendingIntent)
-                .setOngoing(true)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+    private Notification createNotificationSync() {
+        try {
+            Intent notificationIntent = new Intent(this, getMainActivityClass());
+            PendingIntent pendingIntent = PendingIntent.getActivity(
+                    this, 0, notificationIntent,
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0
+            );
 
-        return builder.build();
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setContentTitle(audioConfig.getNotificationTitle())
+                    .setContentText(audioConfig.getNotificationContent())
+                    .setSmallIcon(ResourceHelper.getNotificationIcon(this))
+                    .setContentIntent(pendingIntent)
+                    .setOngoing(true)
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+
+            return builder.build();
+        } catch (Exception e) {
+            Log.e(TAG, "Error creating notification", e);
+            // Return minimal notification as fallback
+            return new NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setContentTitle("Audio Recording")
+                    .setContentText("Recording...")
+                    .setSmallIcon(ResourceHelper.getNotificationIcon(this))
+                    .build();
+        }
     }
 
     private Class<?> getMainActivityClass() {
-        String packageName = getPackageName();
-        Intent launchIntent = getPackageManager().getLaunchIntentForPackage(packageName);
-        if (launchIntent != null) {
-            try {
+        try {
+            String packageName = getPackageName();
+            Intent launchIntent = getPackageManager().getLaunchIntentForPackage(packageName);
+            if (launchIntent != null && launchIntent.getComponent() != null) {
                 return Class.forName(launchIntent.getComponent().getClassName());
-            } catch (ClassNotFoundException e) {
-                Log.e(TAG, "Could not find main activity class", e);
             }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not find main activity class", e);
         }
         return null;
     }
 
-    private void startRecording() {
-        if (isRecording) return;
-
-        try {
-            int channelConfig = channels == 1 ? AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO;
-            int audioFormat = bitsPerSample == 8 ? AudioFormat.ENCODING_PCM_8BIT : AudioFormat.ENCODING_PCM_16BIT;
-
-            int minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat);
-            int actualBufferSize = Math.max(minBufferSize, bufferSize);
-
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                return;
+    private void acquireWakeLockAsync() {
+        audioHandler.post(() -> {
+            try {
+                PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+                if (powerManager != null) {
+                    wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RNLiveAudioStream:WakeLock");
+                    wakeLock.acquire();
+                    Log.d(TAG, "Wake lock acquired");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error acquiring wake lock", e);
             }
-            audioRecord = new AudioRecord(
-                    audioSource,
-                    sampleRate,
-                    channelConfig,
-                    audioFormat,
-                    actualBufferSize
-            );
+        });
+    }
 
-            if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord initialization failed");
-                return;
-            }
-
-            audioRecord.startRecording();
-            isRecording = true;
-
-            recordingThread = new Thread(this::recordingRunnable);
-            recordingThread.start();
-
-        } catch (Exception e) {
-            Log.e(TAG, "Error starting recording", e);
+    private void releaseWakeLockAsync() {
+        if (wakeLock != null) {
+            audioHandler.post(() -> {
+                try {
+                    if (wakeLock.isHeld()) {
+                        wakeLock.release();
+                        Log.d(TAG, "Wake lock released");
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error releasing wake lock", e);
+                } finally {
+                    wakeLock = null;
+                }
+            });
         }
     }
 
-    private void stopRecording() {
-        if (!isRecording) return;
-
-        isRecording = false;
-
-        if (audioRecord != null) {
-            try {
-                audioRecord.stop();
-                audioRecord.release();
-                audioRecord = null;
-            } catch (Exception e) {
-                Log.e(TAG, "Error stopping recording", e);
-            }
+    private void startRecordingAsync() {
+        if (isRecording || isInitializing) {
+            Log.w(TAG, "Recording already in progress or initializing");
+            return;
         }
 
+        isInitializing = true;
+
+        // Chạy audio initialization trên background thread
+        audioHandler.post(() -> {
+            try {
+                Log.d(TAG, "Starting audio initialization...");
+
+                // Permission check
+                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    Log.e(TAG, "Audio permission not granted");
+                    AudioEventEmitter.sendError("Audio permission not granted");
+                    isInitializing = false;
+                    return;
+                }
+
+                // Audio configuration
+                int channelConfig = audioConfig.getChannels() == 1 ?
+                        AudioFormat.CHANNEL_IN_MONO : AudioFormat.CHANNEL_IN_STEREO;
+                int audioFormat = audioConfig.getBitsPerSample() == 8 ?
+                        AudioFormat.ENCODING_PCM_8BIT : AudioFormat.ENCODING_PCM_16BIT;
+
+                // Calculate buffer size (có thể tốn thời gian)
+                int minBufferSize = AudioRecord.getMinBufferSize(
+                        audioConfig.getSampleRate(), channelConfig, audioFormat);
+
+                if (minBufferSize == AudioRecord.ERROR_BAD_VALUE) {
+                    Log.e(TAG, "Invalid audio configuration");
+                    AudioEventEmitter.sendError("Invalid audio configuration");
+                    isInitializing = false;
+                    return;
+                }
+
+                int actualBufferSize = Math.max(minBufferSize, audioConfig.getBufferSize());
+
+                Log.d(TAG, "Creating AudioRecord with buffer size: " + actualBufferSize);
+
+                // AudioRecord creation (có thể tốn thời gian nhất)
+                audioRecord = new AudioRecord(
+                        audioConfig.getAudioSource(),
+                        audioConfig.getSampleRate(),
+                        channelConfig,
+                        audioFormat,
+                        actualBufferSize
+                );
+
+                if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                    Log.e(TAG, "AudioRecord initialization failed");
+                    AudioEventEmitter.sendError("AudioRecord initialization failed");
+                    if (audioRecord != null) {
+                        audioRecord.release();
+                        audioRecord = null;
+                    }
+                    isInitializing = false;
+                    return;
+                }
+
+                // Start recording
+                audioRecord.startRecording();
+                isRecording = true;
+                isInitializing = false;
+
+                // Start recording thread
+                recordingThread = new Thread(this::recordingRunnable, "AudioRecordingThread");
+                recordingThread.setPriority(Thread.MAX_PRIORITY); // High priority cho audio
+                recordingThread.start();
+
+                Log.d(TAG, "Audio recording started successfully");
+
+                // Notify success trên main thread
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    AudioEventEmitter.sendRecordingState(true);
+                });
+
+            } catch (Exception e) {
+                Log.e(TAG, "Error in startRecordingAsync", e);
+                AudioEventEmitter.sendError("Error starting recording: " + e.getMessage());
+                isInitializing = false;
+
+                // Cleanup on error
+                if (audioRecord != null) {
+                    try {
+                        audioRecord.release();
+                    } catch (Exception ignored) {}
+                    audioRecord = null;
+                }
+            }
+        });
+    }
+
+    private void stopRecording() {
+        if (!isRecording && !isInitializing) return;
+
+        Log.d(TAG, "Stopping recording...");
+        isRecording = false;
+        isInitializing = false;
+
+        // Stop trên background thread để tránh block
+        if (audioHandler != null) {
+            audioHandler.post(() -> {
+                if (audioRecord != null) {
+                    try {
+                        audioRecord.stop();
+                        audioRecord.release();
+                        Log.d(TAG, "AudioRecord stopped and released");
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error stopping AudioRecord", e);
+                    } finally {
+                        audioRecord = null;
+                    }
+                }
+            });
+        }
+
+        // Interrupt recording thread
         if (recordingThread != null) {
             recordingThread.interrupt();
+            try {
+                recordingThread.join(1000); // Wait max 1 second
+            } catch (InterruptedException e) {
+                Log.w(TAG, "Interrupted while waiting for recording thread to finish");
+            }
             recordingThread = null;
         }
     }
 
     private void recordingRunnable() {
-        byte[] buffer = new byte[bufferSize];
-        int count = 0;
+        Log.d(TAG, "Recording thread started");
+        byte[] buffer = new byte[audioConfig.getBufferSize()];
+        int bufferCount = 0;
+        // Skip first buffers to eliminate click sound
+        final int SKIP_BUFFER_COUNT = 2;
 
-        while (isRecording && audioRecord != null) {
+        while (isRecording && audioRecord != null && !Thread.currentThread().isInterrupted()) {
             try {
                 int bytesRead = audioRecord.read(buffer, 0, buffer.length);
 
-                // skip first 2 buffers to eliminate "click sound"
-                if (bytesRead > 0 && ++count > 2) {
-                    String base64Data = Base64.encodeToString(buffer, Base64.NO_WRAP);
-                    AudioEventEmitter.sendAudioData(base64Data);
+                if (bytesRead > 0) {
+                    if (++bufferCount > SKIP_BUFFER_COUNT) {
+                        String base64Data = Base64.encodeToString(buffer, 0, bytesRead, Base64.NO_WRAP);
+                        AudioEventEmitter.sendAudioData(base64Data);
+                    }
+                } else if (bytesRead < 0) {
+                    Log.e(TAG, "Error reading audio data: " + bytesRead);
+                    AudioEventEmitter.sendError("Error reading audio data: " + bytesRead);
+                    break;
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error reading audio data", e);
-                AudioEventEmitter.sendError("Error reading audio data: " + e.getMessage());
+                if (!Thread.currentThread().isInterrupted()) {
+                    Log.e(TAG, "Exception in recording thread", e);
+                    AudioEventEmitter.sendError("Recording error: " + e.getMessage());
+                }
                 break;
             }
         }
+
+        Log.d(TAG, "Recording thread finished");
     }
 }
