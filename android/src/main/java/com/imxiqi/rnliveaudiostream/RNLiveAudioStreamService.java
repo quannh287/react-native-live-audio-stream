@@ -62,13 +62,12 @@ public class RNLiveAudioStreamService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        // Lấy config từ singleton
         audioConfig = AudioConfig.getInstance();
-        // Tạo background thread cho audio operations
+
         audioHandlerThread = new HandlerThread("AudioServiceThread");
         audioHandlerThread.start();
         audioHandler = new Handler(audioHandlerThread.getLooper());
-        // Pre-create notification channel và notification để tránh delay
+
         createNotificationChannelAsync();
         preCreateNotification();
         // Async wake lock acquisition
@@ -77,15 +76,12 @@ public class RNLiveAudioStreamService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Start foreground ngay lập tức với cached notification
         if (cachedNotification != null) {
             startForeground(NOTIFICATION_ID, cachedNotification);
         } else {
-            // Fallback nếu chưa có cached notification
             startForeground(NOTIFICATION_ID, createNotificationSync());
         }
 
-        // Async start recording để không block main thread
         startRecordingAsync();
 
         return START_NOT_STICKY;
@@ -119,12 +115,11 @@ public class RNLiveAudioStreamService extends Service {
 
     private void createNotificationChannelAsync() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Chạy trên background thread
             audioHandler.post(() -> {
                 NotificationChannel channel = new NotificationChannel(
                         CHANNEL_ID,
                         "Audio Recording Service",
-                        NotificationManager.IMPORTANCE_DEFAULT
+                        NotificationManager.IMPORTANCE_LOW
                 );
                 channel.setDescription("Recording audio in background");
 
@@ -137,7 +132,6 @@ public class RNLiveAudioStreamService extends Service {
     }
 
     private void preCreateNotification() {
-        // Pre-create notification trên background thread
         audioHandler.post(() -> {
             cachedNotification = createNotificationSync();
             Log.d(TAG, "Notification pre-created successfully");
@@ -158,13 +152,12 @@ public class RNLiveAudioStreamService extends Service {
                     .setSmallIcon(ResourceHelper.getNotificationIcon(this))
                     .setContentIntent(pendingIntent)
                     .setOngoing(true)
-                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
 
             return builder.build();
         } catch (Exception e) {
             Log.e(TAG, "Error creating notification", e);
-            // Return minimal notification as fallback
             return new NotificationCompat.Builder(this, CHANNEL_ID)
                     .setContentTitle("Audio Recording")
                     .setContentText("Recording...")
@@ -246,7 +239,6 @@ public class RNLiveAudioStreamService extends Service {
                 int audioFormat = audioConfig.getBitsPerSample() == 8 ?
                         AudioFormat.ENCODING_PCM_8BIT : AudioFormat.ENCODING_PCM_16BIT;
 
-                // Calculate buffer size (có thể tốn thời gian)
                 int minBufferSize = AudioRecord.getMinBufferSize(
                         audioConfig.getSampleRate(), channelConfig, audioFormat);
 
@@ -261,7 +253,6 @@ public class RNLiveAudioStreamService extends Service {
 
                 Log.d(TAG, "Creating AudioRecord with buffer size: " + actualBufferSize);
 
-                // AudioRecord creation (có thể tốn thời gian nhất)
                 audioRecord = new AudioRecord(
                         audioConfig.getAudioSource(),
                         audioConfig.getSampleRate(),
@@ -321,7 +312,6 @@ public class RNLiveAudioStreamService extends Service {
         isRecording = false;
         isInitializing = false;
 
-        // Stop trên background thread để tránh block
         if (audioHandler != null) {
             audioHandler.post(() -> {
                 if (audioRecord != null) {
