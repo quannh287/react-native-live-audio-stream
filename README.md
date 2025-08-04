@@ -1,18 +1,9 @@
 
-# react-native-live-audio-stream
+# react-native-live-audio-record
 
-[![npm](https://img.shields.io/npm/v/react-native-live-audio-stream)](https://www.npmjs.com/package/react-native-live-audio-stream)
+[![npm](https://img.shields.io/npm/v/react-native-live-audio-record)](https://www.npmjs.com/package/react-native-live-audio-record)
 
-Get live audio stream data for React Native with **background recording support**. Ideal for live voice recognition, transcribing, and continuous audio monitoring.
-
-## ⭐ Key Features
-
-- ✅ **Background Audio Recording** - Continue recording when app is backgrounded
-- ✅ **Cross-platform** - iOS and Android support
-- ✅ **Live Streaming** - Real-time audio data chunks via events
-- ✅ **Memory Efficient** - No file operations, direct data streaming
-- ✅ **Configurable** - Adjustable sample rate, channels, buffer size
-- ✅ **Battery Optimized** - Proper background task and service management
+Get live audio stream data for React Native with **Android background recording support**. Ideal for live voice recognition, transcribing, and continuous audio monitoring.
 
 ## 📖 About
 
@@ -20,14 +11,6 @@ This library is forked from [xiqi/react-native-live-audio-stream](https://github
 
 **What's New:**
 - **Android**: Foreground service with wake lock and battery optimization awareness
-- **Enhanced Documentation**: Comprehensive setup and troubleshooting guides
-
-## ⚠️ Compatibility
-
-- **React Native**: 0.60+ (uses autolinking)
-- **New Architecture**: Not supported yet (Fabric/TurboModules)
-- **iOS**: 10.0+
-- **Android**: API 16+ (Android 4.1+)
 
 ## Install
 ```

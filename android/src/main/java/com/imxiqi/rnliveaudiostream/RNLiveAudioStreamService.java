@@ -38,7 +38,7 @@ public class RNLiveAudioStreamService extends Service {
     private PowerManager.WakeLock wakeLock;
     private AudioConfig audioConfig;
 
-    // Background thread cho audio operations
+    // Background thread for audio operations
     private HandlerThread audioHandlerThread;
     private Handler audioHandler;
 
@@ -62,12 +62,13 @@ public class RNLiveAudioStreamService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        // Get config from singleton
         audioConfig = AudioConfig.getInstance();
-
+        // Create background thread for audio operations
         audioHandlerThread = new HandlerThread("AudioServiceThread");
         audioHandlerThread.start();
         audioHandler = new Handler(audioHandlerThread.getLooper());
-
+        // Pre-create notification channel and notification to avoid delay
         createNotificationChannelAsync();
         preCreateNotification();
         // Async wake lock acquisition
@@ -76,12 +77,15 @@ public class RNLiveAudioStreamService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // Start foreground immediately with cached notification
         if (cachedNotification != null) {
             startForeground(NOTIFICATION_ID, cachedNotification);
         } else {
+            // Fallback if cached notification is not available
             startForeground(NOTIFICATION_ID, createNotificationSync());
         }
 
+        // Async start recording to avoid blocking main thread
         startRecordingAsync();
 
         return START_NOT_STICKY;
@@ -115,6 +119,7 @@ public class RNLiveAudioStreamService extends Service {
 
     private void createNotificationChannelAsync() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Run on background thread
             audioHandler.post(() -> {
                 NotificationChannel channel = new NotificationChannel(
                         CHANNEL_ID,
@@ -122,6 +127,9 @@ public class RNLiveAudioStreamService extends Service {
                         NotificationManager.IMPORTANCE_LOW
                 );
                 channel.setDescription("Recording audio in background");
+                channel.setSound(null, null);
+                channel.enableVibration(false);
+                channel.enableLights(false);
 
                 NotificationManager notificationManager = getSystemService(NotificationManager.class);
                 if (notificationManager != null) {
@@ -132,6 +140,7 @@ public class RNLiveAudioStreamService extends Service {
     }
 
     private void preCreateNotification() {
+        // Pre-create notification on background thread
         audioHandler.post(() -> {
             cachedNotification = createNotificationSync();
             Log.d(TAG, "Notification pre-created successfully");
@@ -158,6 +167,7 @@ public class RNLiveAudioStreamService extends Service {
             return builder.build();
         } catch (Exception e) {
             Log.e(TAG, "Error creating notification", e);
+            // Return minimal notification as fallback
             return new NotificationCompat.Builder(this, CHANNEL_ID)
                     .setContentTitle("Audio Recording")
                     .setContentText("Recording...")
@@ -219,7 +229,7 @@ public class RNLiveAudioStreamService extends Service {
 
         isInitializing = true;
 
-        // Chạy audio initialization trên background thread
+        // Run audio initialization on background thread
         audioHandler.post(() -> {
             try {
                 Log.d(TAG, "Starting audio initialization...");
@@ -239,6 +249,7 @@ public class RNLiveAudioStreamService extends Service {
                 int audioFormat = audioConfig.getBitsPerSample() == 8 ?
                         AudioFormat.ENCODING_PCM_8BIT : AudioFormat.ENCODING_PCM_16BIT;
 
+                // Calculate buffer size (may take time)
                 int minBufferSize = AudioRecord.getMinBufferSize(
                         audioConfig.getSampleRate(), channelConfig, audioFormat);
 
@@ -253,6 +264,7 @@ public class RNLiveAudioStreamService extends Service {
 
                 Log.d(TAG, "Creating AudioRecord with buffer size: " + actualBufferSize);
 
+                // AudioRecord creation (may take the most time)
                 audioRecord = new AudioRecord(
                         audioConfig.getAudioSource(),
                         audioConfig.getSampleRate(),
@@ -279,12 +291,12 @@ public class RNLiveAudioStreamService extends Service {
 
                 // Start recording thread
                 recordingThread = new Thread(this::recordingRunnable, "AudioRecordingThread");
-                recordingThread.setPriority(Thread.MAX_PRIORITY); // High priority cho audio
+                recordingThread.setPriority(Thread.MAX_PRIORITY); // High priority for audio
                 recordingThread.start();
 
                 Log.d(TAG, "Audio recording started successfully");
 
-                // Notify success trên main thread
+                // Notify success on main thread
                 new Handler(Looper.getMainLooper()).post(() -> {
                     AudioEventEmitter.sendRecordingState(true);
                 });
@@ -312,6 +324,7 @@ public class RNLiveAudioStreamService extends Service {
         isRecording = false;
         isInitializing = false;
 
+        // Stop on background thread to avoid blocking
         if (audioHandler != null) {
             audioHandler.post(() -> {
                 if (audioRecord != null) {
