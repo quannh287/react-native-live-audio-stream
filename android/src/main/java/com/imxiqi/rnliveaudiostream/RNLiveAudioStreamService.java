@@ -38,7 +38,7 @@ public class RNLiveAudioStreamService extends Service {
     private PowerManager.WakeLock wakeLock;
     private AudioConfig audioConfig;
 
-    // Background thread for audio operations
+    // Background thread cho audio operations
     private HandlerThread audioHandlerThread;
     private Handler audioHandler;
 
@@ -62,13 +62,13 @@ public class RNLiveAudioStreamService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        // Get config from singleton
+        // Lấy config từ singleton
         audioConfig = AudioConfig.getInstance();
-        // Create background thread for audio operations
+        // Tạo background thread cho audio operations
         audioHandlerThread = new HandlerThread("AudioServiceThread");
         audioHandlerThread.start();
         audioHandler = new Handler(audioHandlerThread.getLooper());
-        // Pre-create notification channel and notification to avoid delay
+        // Pre-create notification channel và notification để tránh delay
         createNotificationChannelAsync();
         preCreateNotification();
         // Async wake lock acquisition
@@ -77,38 +77,49 @@ public class RNLiveAudioStreamService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Start foreground immediately with cached notification
+        // Start foreground ngay lập tức với cached notification
         if (cachedNotification != null) {
             startForeground(NOTIFICATION_ID, cachedNotification);
         } else {
-            // Fallback if cached notification is not available
+            // Fallback nếu chưa có cached notification
             startForeground(NOTIFICATION_ID, createNotificationSync());
         }
 
-        // Async start recording to avoid blocking main thread
+        // Async start recording để không block main thread
         startRecordingAsync();
 
         return START_NOT_STICKY;
     }
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        Log.d(TAG, "onTaskRemoved: user removed task; stopping service");
+
+        // Ngắt ghi âm + nhả tài nguyên
+        stopRecording();                  // bạn đã có hàm này
+        releaseWakeLockAsync();           // đảm bảo gọi thẳng/đồng bộ nếu cần
+
+        // Hạ foreground rồi tự dừng
+        try {
+            stopForeground(true);         // STOP_FOREGROUND_REMOVE
+        } catch (Exception ignore) {}
+
+        stopSelf();
+
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
     public void onDestroy() {
-        super.onDestroy();
-
+        Log.d(TAG, "onDestroy");
         stopRecording();
-
-        // Cleanup background thread
+        try { stopForeground(true); } catch (Exception ignore) {}
+        releaseWakeLockAsync();
         if (audioHandlerThread != null) {
             audioHandlerThread.quitSafely();
-            try {
-                audioHandlerThread.join(1000); // Wait max 1 second
-            } catch (InterruptedException e) {
-                Log.w(TAG, "Interrupted while waiting for audio thread to finish");
-            }
+            try { audioHandlerThread.join(500); } catch (InterruptedException ignored) {}
         }
-
-        // Release wake lock
-        releaseWakeLockAsync();
+        super.onDestroy();
     }
 
     @Nullable
@@ -119,17 +130,14 @@ public class RNLiveAudioStreamService extends Service {
 
     private void createNotificationChannelAsync() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Run on background thread
+            // Chạy trên background thread
             audioHandler.post(() -> {
                 NotificationChannel channel = new NotificationChannel(
                         CHANNEL_ID,
                         "Audio Recording Service",
-                        NotificationManager.IMPORTANCE_LOW
+                        NotificationManager.IMPORTANCE_DEFAULT
                 );
                 channel.setDescription("Recording audio in background");
-                channel.setSound(null, null);
-                channel.enableVibration(false);
-                channel.enableLights(false);
 
                 NotificationManager notificationManager = getSystemService(NotificationManager.class);
                 if (notificationManager != null) {
@@ -140,7 +148,7 @@ public class RNLiveAudioStreamService extends Service {
     }
 
     private void preCreateNotification() {
-        // Pre-create notification on background thread
+        // Pre-create notification trên background thread
         audioHandler.post(() -> {
             cachedNotification = createNotificationSync();
             Log.d(TAG, "Notification pre-created successfully");
@@ -161,7 +169,7 @@ public class RNLiveAudioStreamService extends Service {
                     .setSmallIcon(ResourceHelper.getNotificationIcon(this))
                     .setContentIntent(pendingIntent)
                     .setOngoing(true)
-                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
 
             return builder.build();
@@ -229,7 +237,7 @@ public class RNLiveAudioStreamService extends Service {
 
         isInitializing = true;
 
-        // Run audio initialization on background thread
+        // Chạy audio initialization trên background thread
         audioHandler.post(() -> {
             try {
                 Log.d(TAG, "Starting audio initialization...");
@@ -249,7 +257,7 @@ public class RNLiveAudioStreamService extends Service {
                 int audioFormat = audioConfig.getBitsPerSample() == 8 ?
                         AudioFormat.ENCODING_PCM_8BIT : AudioFormat.ENCODING_PCM_16BIT;
 
-                // Calculate buffer size (may take time)
+                // Calculate buffer size (có thể tốn thời gian)
                 int minBufferSize = AudioRecord.getMinBufferSize(
                         audioConfig.getSampleRate(), channelConfig, audioFormat);
 
@@ -264,7 +272,7 @@ public class RNLiveAudioStreamService extends Service {
 
                 Log.d(TAG, "Creating AudioRecord with buffer size: " + actualBufferSize);
 
-                // AudioRecord creation (may take the most time)
+                // AudioRecord creation (có thể tốn thời gian nhất)
                 audioRecord = new AudioRecord(
                         audioConfig.getAudioSource(),
                         audioConfig.getSampleRate(),
@@ -291,12 +299,12 @@ public class RNLiveAudioStreamService extends Service {
 
                 // Start recording thread
                 recordingThread = new Thread(this::recordingRunnable, "AudioRecordingThread");
-                recordingThread.setPriority(Thread.MAX_PRIORITY); // High priority for audio
+                recordingThread.setPriority(Thread.MAX_PRIORITY); // High priority cho audio
                 recordingThread.start();
 
                 Log.d(TAG, "Audio recording started successfully");
 
-                // Notify success on main thread
+                // Notify success trên main thread
                 new Handler(Looper.getMainLooper()).post(() -> {
                     AudioEventEmitter.sendRecordingState(true);
                 });
@@ -324,7 +332,7 @@ public class RNLiveAudioStreamService extends Service {
         isRecording = false;
         isInitializing = false;
 
-        // Stop on background thread to avoid blocking
+        // Stop trên background thread để tránh block
         if (audioHandler != null) {
             audioHandler.post(() -> {
                 if (audioRecord != null) {
