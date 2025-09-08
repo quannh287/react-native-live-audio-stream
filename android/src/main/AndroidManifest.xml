@@ -12,6 +12,7 @@
           android:name="com.imxiqi.rnliveaudiostream.RNLiveAudioStreamService"
           android:enabled="true"
           android:exported="false"
+          android:stopWithTask="true"
           android:foregroundServiceType="microphone" />
     </application>
 </manifest>
