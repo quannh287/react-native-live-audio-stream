@@ -10,6 +10,7 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
+import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
@@ -22,7 +23,7 @@ import java.lang.Math;
 import java.util.HashMap;
 import java.util.Map;
 
-public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule {
+public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule implements LifecycleEventListener {
 
     private final ReactApplicationContext reactContext;
     private final AudioConfig audioConfig;
@@ -33,6 +34,8 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule {
         this.audioConfig = AudioConfig.getInstance();
         // Set ReactContext for AudioEventEmitter
         AudioEventEmitter.setReactContext(reactContext);
+        // Track lifecycle to stop service when host is destroyed
+        this.reactContext.addLifecycleEventListener(this);
     }
 
     @Override
@@ -50,6 +53,29 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule {
         constants.put("AUDIO_SOURCE", audioConfig.getAudioSource());
         constants.put("BUFFER_SIZE", audioConfig.getBufferSize());
         return constants;
+    }
+
+    @Override
+    public void onCatalystInstanceDestroy() {
+        // Ensure service is stopped and emitter detached when the React instance is destroyed
+        try {
+            RNLiveAudioStreamService.stopService(reactContext);
+        } catch (Exception ignore) {}
+        AudioEventEmitter.setReactContext(null);
+        super.onCatalystInstanceDestroy();
+    }
+
+    @Override
+    public void onHostResume() { }
+
+    @Override
+    public void onHostPause() { }
+
+    @Override
+    public void onHostDestroy() {
+        try {
+            RNLiveAudioStreamService.stopService(reactContext);
+        } catch (Exception ignore) {}
     }
 
     @ReactMethod

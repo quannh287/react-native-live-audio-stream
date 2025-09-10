@@ -32,6 +32,18 @@ public class AudioEventEmitter {
             emit("error", params);
         }
     }
+
+    // Notify JS about service lifecycle/state changes
+    // state examples: "stopped", "killed"
+    // reason examples: "action_stop", "task_removed", "destroy"
+    public static void sendServiceState(String state, String reason) {
+        if (reactContext != null) {
+            WritableMap params = Arguments.createMap();
+            params.putString("state", state);
+            if (reason != null) params.putString("reason", reason);
+            emit("serviceState", params);
+        }
+    }
     private static void emit(String eventName, WritableMap params) {
         if (reactContext != null) {
             reactContext

@@ -30,6 +30,7 @@ public class RNLiveAudioStreamService extends Service {
     private static final String TAG = "RNLiveAudioStreamService";
     private static final int NOTIFICATION_ID = 1;
     private static final String CHANNEL_ID = "AudioRecordingChannel";
+    private static final String ACTION_STOP = "com.imxiqi.rnliveaudiostream.ACTION_STOP";
 
     private AudioRecord audioRecord;
     private volatile boolean isRecording = false;
@@ -38,11 +39,11 @@ public class RNLiveAudioStreamService extends Service {
     private PowerManager.WakeLock wakeLock;
     private AudioConfig audioConfig;
 
-    // Background thread cho audio operations
     private HandlerThread audioHandlerThread;
     private Handler audioHandler;
 
     private Notification cachedNotification;
+    private int lastStartId = 0;
 
     public static void startService(ReactContext context) {
         Intent serviceIntent = new Intent(context, RNLiveAudioStreamService.class);
@@ -55,37 +56,48 @@ public class RNLiveAudioStreamService extends Service {
     }
 
     public static void stopService(ReactContext context) {
-        Intent serviceIntent = new Intent(context, RNLiveAudioStreamService.class);
-        context.stopService(serviceIntent);
+        // Prefer to deliver ACTION_STOP to a running service so it can cleanup internally.
+        // If background launch is restricted, request system to stop the service directly.
+        Intent stopIntent = new Intent(context, RNLiveAudioStreamService.class).setAction(ACTION_STOP);
+        try {
+            context.startService(stopIntent);
+        } catch (IllegalStateException ex) {
+            // If we cannot start in background, just stop the service directly.
+            context.stopService(new Intent(context, RNLiveAudioStreamService.class));
+        }
+        // Best-effort ensure stop even if ACTION_STOP wasn't delivered.
+        context.stopService(new Intent(context, RNLiveAudioStreamService.class));
     }
 
     @Override
     public void onCreate() {
         super.onCreate();
-        // Lấy config từ singleton
         audioConfig = AudioConfig.getInstance();
-        // Tạo background thread cho audio operations
         audioHandlerThread = new HandlerThread("AudioServiceThread");
         audioHandlerThread.start();
         audioHandler = new Handler(audioHandlerThread.getLooper());
-        // Pre-create notification channel và notification để tránh delay
         createNotificationChannelAsync();
         preCreateNotification();
-        // Async wake lock acquisition
         acquireWakeLockAsync();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Start foreground ngay lập tức với cached notification
+        this.lastStartId = startId;
+
+        if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            Log.d(TAG, "Received ACTION_STOP; stopping service");
+            stopRecording();
+            try { stopForeground(true); } catch (Exception ignore) {}
+            releaseWakeLockImmediate();
+            stopSelfResult(this.lastStartId);
+            return START_NOT_STICKY;
+        }
         if (cachedNotification != null) {
             startForeground(NOTIFICATION_ID, cachedNotification);
         } else {
-            // Fallback nếu chưa có cached notification
             startForeground(NOTIFICATION_ID, createNotificationSync());
         }
-
-        // Async start recording để không block main thread
         startRecordingAsync();
 
         return START_NOT_STICKY;
@@ -95,16 +107,17 @@ public class RNLiveAudioStreamService extends Service {
     public void onTaskRemoved(Intent rootIntent) {
         Log.d(TAG, "onTaskRemoved: user removed task; stopping service");
 
-        // Ngắt ghi âm + nhả tài nguyên
-        stopRecording();                  // bạn đã có hàm này
-        releaseWakeLockAsync();           // đảm bảo gọi thẳng/đồng bộ nếu cần
+        stopRecording();
+        releaseWakeLockImmediate();
 
-        // Hạ foreground rồi tự dừng
         try {
-            stopForeground(true);         // STOP_FOREGROUND_REMOVE
+            stopForeground(true);
         } catch (Exception ignore) {}
 
-        stopSelf();
+
+        if (!stopSelfResult(this.lastStartId)) {
+            stopSelf();
+        }
 
         super.onTaskRemoved(rootIntent);
     }
@@ -114,7 +127,7 @@ public class RNLiveAudioStreamService extends Service {
         Log.d(TAG, "onDestroy");
         stopRecording();
         try { stopForeground(true); } catch (Exception ignore) {}
-        releaseWakeLockAsync();
+        releaseWakeLockImmediate();
         if (audioHandlerThread != null) {
             audioHandlerThread.quitSafely();
             try { audioHandlerThread.join(500); } catch (InterruptedException ignored) {}
@@ -130,7 +143,6 @@ public class RNLiveAudioStreamService extends Service {
 
     private void createNotificationChannelAsync() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Chạy trên background thread
             audioHandler.post(() -> {
                 NotificationChannel channel = new NotificationChannel(
                         CHANNEL_ID,
@@ -148,7 +160,6 @@ public class RNLiveAudioStreamService extends Service {
     }
 
     private void preCreateNotification() {
-        // Pre-create notification trên background thread
         audioHandler.post(() -> {
             cachedNotification = createNotificationSync();
             Log.d(TAG, "Notification pre-created successfully");
@@ -212,20 +223,17 @@ public class RNLiveAudioStreamService extends Service {
         });
     }
 
-    private void releaseWakeLockAsync() {
-        if (wakeLock != null) {
-            audioHandler.post(() -> {
-                try {
-                    if (wakeLock.isHeld()) {
-                        wakeLock.release();
-                        Log.d(TAG, "Wake lock released");
-                    }
-                } catch (Exception e) {
-                    Log.e(TAG, "Error releasing wake lock", e);
-                } finally {
-                    wakeLock = null;
-                }
-            });
+    // Immediate release used for shutdown paths to avoid handler post delays
+    private void releaseWakeLockImmediate() {
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) {
+                wakeLock.release();
+                Log.d(TAG, "Wake lock released (immediate)");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error releasing wake lock (immediate)", e);
+        } finally {
+            wakeLock = null;
         }
     }
 
@@ -237,7 +245,6 @@ public class RNLiveAudioStreamService extends Service {
 
         isInitializing = true;
 
-        // Chạy audio initialization trên background thread
         audioHandler.post(() -> {
             try {
                 Log.d(TAG, "Starting audio initialization...");
@@ -257,7 +264,6 @@ public class RNLiveAudioStreamService extends Service {
                 int audioFormat = audioConfig.getBitsPerSample() == 8 ?
                         AudioFormat.ENCODING_PCM_8BIT : AudioFormat.ENCODING_PCM_16BIT;
 
-                // Calculate buffer size (có thể tốn thời gian)
                 int minBufferSize = AudioRecord.getMinBufferSize(
                         audioConfig.getSampleRate(), channelConfig, audioFormat);
 
@@ -272,7 +278,6 @@ public class RNLiveAudioStreamService extends Service {
 
                 Log.d(TAG, "Creating AudioRecord with buffer size: " + actualBufferSize);
 
-                // AudioRecord creation (có thể tốn thời gian nhất)
                 audioRecord = new AudioRecord(
                         audioConfig.getAudioSource(),
                         audioConfig.getSampleRate(),
@@ -292,19 +297,16 @@ public class RNLiveAudioStreamService extends Service {
                     return;
                 }
 
-                // Start recording
                 audioRecord.startRecording();
                 isRecording = true;
                 isInitializing = false;
 
-                // Start recording thread
                 recordingThread = new Thread(this::recordingRunnable, "AudioRecordingThread");
-                recordingThread.setPriority(Thread.MAX_PRIORITY); // High priority cho audio
+                recordingThread.setPriority(Thread.MAX_PRIORITY);
                 recordingThread.start();
 
                 Log.d(TAG, "Audio recording started successfully");
 
-                // Notify success trên main thread
                 new Handler(Looper.getMainLooper()).post(() -> {
                     AudioEventEmitter.sendRecordingState(true);
                 });
@@ -332,7 +334,6 @@ public class RNLiveAudioStreamService extends Service {
         isRecording = false;
         isInitializing = false;
 
-        // Stop trên background thread để tránh block
         if (audioHandler != null) {
             audioHandler.post(() -> {
                 if (audioRecord != null) {
@@ -349,7 +350,6 @@ public class RNLiveAudioStreamService extends Service {
             });
         }
 
-        // Interrupt recording thread
         if (recordingThread != null) {
             recordingThread.interrupt();
             try {
