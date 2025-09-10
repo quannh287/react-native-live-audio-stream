@@ -1,11 +1,17 @@
 declare module "react-native-live-audio-record" {
-  export type AudioEvent = "data" | "recordingState" | "error";
+  export type AudioEvent = "data" | "recordingState" | "error" | "serviceState"; // serviceState: Android-only
   export type EventCallback<T> = (data: T) => void;
 
   export interface AudioEventDataMap {
     data: string;
     recordingState: { isRecording: boolean };
     error: { error: string };
+    /**
+     * Android-only: native service lifecycle updates
+     * - state: currently "stopped" when service is torn down
+     * - reason: "action_stop" | "task_removed" | "destroy" (or vendor-specific)
+     */
+    serviceState: { state: string; reason?: string };
   }
 
   export interface IAudioRecord {
@@ -62,6 +68,16 @@ declare module "react-native-live-audio-record" {
   }
 
   const AudioRecord: IAudioRecord;
+
+  /**
+   * Event name constants. Note: SERVICE_STATE is Android-only.
+   */
+  export const AudioEvents: {
+    DATA: 'data';
+    RECORDING_STATE: 'recordingState';
+    ERROR: 'error';
+    SERVICE_STATE: 'serviceState'; // Android-only
+  };
 
   export default AudioRecord;
 }
