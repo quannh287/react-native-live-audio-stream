@@ -43,9 +43,7 @@ public class RNLiveAudioStreamService extends Service {
     private Notification cachedNotification;
     private int lastStartId = 0;
 
-    public static boolean isRecording() {
-        return isRecording;
-    }
+
 
     public static void startService(ReactContext context) {
         Intent serviceIntent = new Intent(context, RNLiveAudioStreamService.class);

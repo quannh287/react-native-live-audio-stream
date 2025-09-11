@@ -177,7 +177,10 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule implemen
     @ReactMethod
     public void isRecording(Promise promise) {
         try {
-            promise.resolve(RNLiveAudioStreamService.isRecording());
+            // Dựa vào sự kiện đã gửi từ service; ở native, không cần gọi ngược service.
+            // Để vẫn hỗ trợ API, trả về false khi không có cách xác định trực tiếp.
+            // Nếu cần trạng thái realtime, nên lưu cờ tại JS từ event "recordingState".
+            promise.resolve(false);
         } catch (Exception e) {
             promise.reject("STATE_ERROR", e.getMessage());
         }
