@@ -16,7 +16,6 @@ export const AudioEvents = {
 AudioRecord.init = options => RNLiveAudioStream.init(options);
 AudioRecord.start = () => RNLiveAudioStream.start();
 AudioRecord.stop = () => RNLiveAudioStream.stop();
-AudioRecord.isRecording = () => RNLiveAudioStream.isRecording();
 
 const eventsMap = {
   data: AudioEvents.DATA,
