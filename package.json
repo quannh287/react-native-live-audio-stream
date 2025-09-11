@@ -1,6 +1,6 @@
 {
   "name": "react-native-live-audio-record",
-  "version": "1.1.5-beta.2",
+  "version": "1.1.5-beta.3",
   "private": false,
   "description": "Get live audio recorder data for React Native",
   "license": "MIT",
