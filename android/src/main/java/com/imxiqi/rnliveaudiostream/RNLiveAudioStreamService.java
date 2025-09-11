@@ -16,7 +16,6 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
-import android.os.PowerManager;
 import android.util.Base64;
 import android.util.Log;
 
@@ -36,7 +35,6 @@ public class RNLiveAudioStreamService extends Service {
     private volatile boolean isRecording = false;
     private volatile boolean isInitializing = false;
     private Thread recordingThread;
-    private PowerManager.WakeLock wakeLock;
     private AudioConfig audioConfig;
 
     private HandlerThread audioHandlerThread;
@@ -82,7 +80,6 @@ public class RNLiveAudioStreamService extends Service {
         audioHandler = new Handler(audioHandlerThread.getLooper());
         createNotificationChannelAsync();
         preCreateNotification();
-        acquireWakeLockAsync();
     }
 
     @Override
@@ -196,36 +193,7 @@ public class RNLiveAudioStreamService extends Service {
         return null;
     }
 
-    private void acquireWakeLockAsync() {
-        audioHandler.post(() -> {
-            try {
-                PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
-                if (powerManager != null) {
-                    wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RNLiveAudioStream:WakeLock");
-                    // Avoid reference-counting to ensure a single balanced release on shutdown
-                    wakeLock.setReferenceCounted(false);
-                    wakeLock.acquire();
-                    Log.d(TAG, "Wake lock acquired");
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error acquiring wake lock", e);
-            }
-        });
-    }
 
-    // Immediate release used for shutdown paths to avoid handler post delays
-    private void releaseWakeLockImmediate() {
-        try {
-            if (wakeLock != null && wakeLock.isHeld()) {
-                wakeLock.release();
-                Log.d(TAG, "Wake lock released (immediate)");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error releasing wake lock (immediate)", e);
-        } finally {
-            wakeLock = null;
-        }
-    }
 
     private void startRecordingAsync() {
         if (isRecording || isInitializing) {
@@ -409,7 +377,6 @@ public class RNLiveAudioStreamService extends Service {
             stopRecording();
         } catch (Exception ignore) {}
         clearNotification();
-        releaseWakeLockImmediate();
         try {
             if (!stopSelfResult(this.lastStartId)) {
                 stopSelf();
