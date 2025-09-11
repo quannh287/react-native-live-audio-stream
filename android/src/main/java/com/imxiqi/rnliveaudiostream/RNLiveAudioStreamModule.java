@@ -165,9 +165,6 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule implemen
         }
     }
 
-    /**
-     * Android-only: read flag without clearing (sync).
-     */
     @ReactMethod(isBlockingSynchronousMethod = true)
     public boolean getWasKilledFlagSync() {
         try {
@@ -179,9 +176,6 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule implemen
         }
     }
 
-    /**
-     * Android-only: clear flag (sync).
-     */
     @ReactMethod(isBlockingSynchronousMethod = true)
     public void clearWasKilledFlagSync() {
         try {
@@ -193,21 +187,5 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule implemen
     private boolean hasAudioPermission() {
         return ContextCompat.checkSelfPermission(reactContext,
                 android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    /**
-     * Expose current recording state to JS.
-     * Returns true if the foreground service is actively recording.
-     */
-    @ReactMethod
-    public void isRecording(Promise promise) {
-        try {
-            // Dựa vào sự kiện đã gửi từ service; ở native, không cần gọi ngược service.
-            // Để vẫn hỗ trợ API, trả về false khi không có cách xác định trực tiếp.
-            // Nếu cần trạng thái realtime, nên lưu cờ tại JS từ event "recordingState".
-            promise.resolve(false);
-        } catch (Exception e) {
-            promise.reject("STATE_ERROR", e.getMessage());
-        }
     }
 }

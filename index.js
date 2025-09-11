@@ -9,8 +9,6 @@ export const AudioEvents = {
   DATA: 'data',
   RECORDING_STATE: 'recordingState',
   ERROR: 'error',
-  // Android-only: emitted when native service stops/killed with a reason
-  SERVICE_STATE: 'serviceState',
 };
 
 AudioRecord.init = options => RNLiveAudioStream.init(options);
@@ -25,8 +23,6 @@ const eventsMap = {
   data: AudioEvents.DATA,
   recordingState: AudioEvents.RECORDING_STATE,
   error: AudioEvents.ERROR,
-  // Android-only
-  serviceState: AudioEvents.SERVICE_STATE,
 };
 
 AudioRecord.on = (event, callback) => {

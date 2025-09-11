@@ -105,9 +105,7 @@ public class RNLiveAudioStreamService extends Service {
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         Log.d(TAG, "onTaskRemoved: user removed task; stopping service");
-        Log.d(TAG, "onTaskRemoved: setting KilledFlag=true");
         setKilledFlag();
-        try { AudioEventEmitter.sendServiceState("stopped", "task_removed"); } catch (Exception ignore) {}
         stopServiceGracefully();
 
         super.onTaskRemoved(rootIntent);
@@ -117,6 +115,7 @@ public class RNLiveAudioStreamService extends Service {
     public void onDestroy() {
         Log.d(TAG, "onDestroy");
         stopServiceGracefully();
+        setKilledFlag();
         if (audioHandlerThread != null) {
             audioHandlerThread.quitSafely();
             try { audioHandlerThread.join(500); } catch (InterruptedException ignored) {}
