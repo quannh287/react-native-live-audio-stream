@@ -16,6 +16,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
+import android.content.SharedPreferences;
 import android.util.Base64;
 import android.util.Log;
 
@@ -30,6 +31,8 @@ public class RNLiveAudioStreamService extends Service {
     private static final int NOTIFICATION_ID = 1;
     private static final String CHANNEL_ID = "AudioRecordingChannel";
     private static final String ACTION_STOP = "com.imxiqi.rnliveaudiostream.ACTION_STOP";
+    private static final String PREFS_NAME = "RNLiveAudioStream";
+    private static final String KEY_APP_KILLED = "app_killed";
 
     private AudioRecord audioRecord;
     private volatile boolean isRecording = false;
@@ -102,6 +105,8 @@ public class RNLiveAudioStreamService extends Service {
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         Log.d(TAG, "onTaskRemoved: user removed task; stopping service");
+        setKilledFlag();
+        try { AudioEventEmitter.sendServiceState("stopped", "task_removed"); } catch (Exception ignore) {}
         stopServiceGracefully();
 
         super.onTaskRemoved(rootIntent);
@@ -380,5 +385,25 @@ public class RNLiveAudioStreamService extends Service {
                 stopSelf();
             }
         } catch (Exception ignore) {}
+    }
+
+    private void setKilledFlag() {
+        try {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit().putBoolean(KEY_APP_KILLED, true).apply();
+        } catch (Exception ignore) {}
+    }
+
+    public static boolean consumeWasKilledFlag(Context context) {
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            boolean wasKilled = prefs.getBoolean(KEY_APP_KILLED, false);
+            if (wasKilled) {
+                prefs.edit().remove(KEY_APP_KILLED).apply();
+            }
+            return wasKilled;
+        } catch (Exception ignore) {
+            return false;
+        }
     }
 }

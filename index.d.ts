@@ -22,6 +22,10 @@ declare module "react-native-live-audio-record" {
     addListener: <T extends AudioEvent>(event: T, callback: EventCallback<T extends keyof AudioEventDataMap ? AudioEventDataMap[T] : any>) => void;
     removeListener: (event: AudioEvent) => void;
     removeAllListeners: () => void;
+    /**
+     * Android-only: read and clear flag indicating previous app session was user-killed.
+     */
+    consumeWasKilledFlag: () => Promise<boolean>;
   }
 
   export type AudioChannel = 1 | 2;

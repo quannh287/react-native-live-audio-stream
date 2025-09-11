@@ -165,6 +165,19 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule implemen
         }
     }
 
+    /**
+     * Read and clear the persisted flag indicating the app was killed by user (task removed).
+     */
+    @ReactMethod
+    public void consumeWasKilledFlag(Promise promise) {
+        try {
+            boolean value = RNLiveAudioStreamService.consumeWasKilledFlag(getReactApplicationContext());
+            promise.resolve(value);
+        } catch (Exception e) {
+            promise.reject("FLAG_ERROR", e.getMessage());
+        }
+    }
+
     private boolean hasAudioPermission() {
         return ContextCompat.checkSelfPermission(reactContext,
                 android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;

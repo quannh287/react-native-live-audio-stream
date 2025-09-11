@@ -17,6 +17,9 @@ AudioRecord.init = options => RNLiveAudioStream.init(options);
 AudioRecord.start = () => RNLiveAudioStream.start();
 AudioRecord.stop = () => RNLiveAudioStream.stop();
 
+// Returns a promise<boolean>; true if last app session was killed by user (Android only)
+AudioRecord.consumeWasKilledFlag = () => RNLiveAudioStream.consumeWasKilledFlag?.();
+
 const eventsMap = {
   data: AudioEvents.DATA,
   recordingState: AudioEvents.RECORDING_STATE,
