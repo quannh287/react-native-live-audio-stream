@@ -406,4 +406,20 @@ public class RNLiveAudioStreamService extends Service {
             return false;
         }
     }
+
+    public static boolean getWasKilledFlag(Context context) {
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            return prefs.getBoolean(KEY_APP_KILLED, false);
+        } catch (Exception ignore) {
+            return false;
+        }
+    }
+
+    public static void clearWasKilledFlag(Context context) {
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit().remove(KEY_APP_KILLED).apply();
+        } catch (Exception ignore) {}
+    }
 }

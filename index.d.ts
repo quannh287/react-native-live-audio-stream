@@ -23,13 +23,17 @@ declare module "react-native-live-audio-record" {
     removeListener: (event: AudioEvent) => void;
     removeAllListeners: () => void;
     /**
-     * Android-only: read and clear flag indicating previous app session was user-killed.
-     */
-    consumeWasKilledFlag: () => Promise<boolean>;
-    /**
      * Android-only: synchronous variant of consumeWasKilledFlag.
      */
     consumeWasKilledFlagSync: () => boolean;
+    /**
+     * Android-only: read flag without clearing (sync).
+     */
+    getWasKilledFlagSync: () => boolean;
+    /**
+     * Android-only: clear flag (sync).
+     */
+    clearWasKilledFlagSync: () => void;
   }
 
   export type AudioChannel = 1 | 2;

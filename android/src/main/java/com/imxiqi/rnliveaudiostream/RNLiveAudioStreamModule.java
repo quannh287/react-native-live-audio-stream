@@ -166,19 +166,6 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule implemen
     }
 
     /**
-     * Read and clear the persisted flag indicating the app was killed by user (task removed).
-     */
-    @ReactMethod
-    public void consumeWasKilledFlag(Promise promise) {
-        try {
-            boolean value = RNLiveAudioStreamService.consumeWasKilledFlag(getReactApplicationContext());
-            promise.resolve(value);
-        } catch (Exception e) {
-            promise.reject("FLAG_ERROR", e.getMessage());
-        }
-    }
-
-    /**
      * Android-only synchronous variant to read & clear the killed flag without Promise.
      */
     @ReactMethod(isBlockingSynchronousMethod = true)
@@ -188,6 +175,28 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule implemen
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * Android-only: read flag without clearing (sync).
+     */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public boolean getWasKilledFlagSync() {
+        try {
+            return RNLiveAudioStreamService.getWasKilledFlag(getReactApplicationContext());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Android-only: clear flag (sync).
+     */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public void clearWasKilledFlagSync() {
+        try {
+            RNLiveAudioStreamService.clearWasKilledFlag(getReactApplicationContext());
+        } catch (Exception ignore) {}
     }
 
     private boolean hasAudioPermission() {

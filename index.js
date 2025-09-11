@@ -17,11 +17,11 @@ AudioRecord.init = options => RNLiveAudioStream.init(options);
 AudioRecord.start = () => RNLiveAudioStream.start();
 AudioRecord.stop = () => RNLiveAudioStream.stop();
 
-// Returns a promise<boolean>; true if last app session was killed by user (Android only)
-AudioRecord.consumeWasKilledFlag = () => RNLiveAudioStream.consumeWasKilledFlag?.();
-
 // Synchronous variant (Android only). Returns boolean immediately.
 AudioRecord.consumeWasKilledFlagSync = () => RNLiveAudioStream.consumeWasKilledFlagSync?.();
+// Read-only then clear manually (Android only)
+AudioRecord.getWasKilledFlagSync = () => RNLiveAudioStream.getWasKilledFlagSync?.();
+AudioRecord.clearWasKilledFlagSync = () => RNLiveAudioStream.clearWasKilledFlagSync?.();
 
 const eventsMap = {
   data: AudioEvents.DATA,
