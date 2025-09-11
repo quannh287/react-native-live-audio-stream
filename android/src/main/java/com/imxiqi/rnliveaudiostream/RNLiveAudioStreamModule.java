@@ -169,4 +169,17 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule implemen
         return ContextCompat.checkSelfPermission(reactContext,
                 android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
     }
+
+    /**
+     * Expose current recording state to JS.
+     * Returns true if the foreground service is actively recording.
+     */
+    @ReactMethod
+    public void isRecording(Promise promise) {
+        try {
+            promise.resolve(RNLiveAudioStreamService.isRecording());
+        } catch (Exception e) {
+            promise.reject("STATE_ERROR", e.getMessage());
+        }
+    }
 }

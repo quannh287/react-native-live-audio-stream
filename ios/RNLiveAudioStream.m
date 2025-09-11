@@ -70,6 +70,18 @@ RCT_EXPORT_METHOD(stop) {
     }
 }
 
+// Return current recording state to JS (Promise<boolean>)
+RCT_REMAP_METHOD(isRecording,
+                 isRecordingWithResolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject)
+{
+  @try {
+    resolve(@(_recordState.mIsRunning));
+  } @catch (NSException *exception) {
+    reject(@"STATE_ERROR", exception.reason, nil);
+  }
+}
+
 void HandleInputBuffer(void *inUserData,
                        AudioQueueRef inAQ,
                        AudioQueueBufferRef inBuffer,

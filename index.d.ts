@@ -18,6 +18,7 @@ declare module "react-native-live-audio-record" {
     init: (options: Options) => void;
     start: () => Promise<string>;
     stop: () => Promise<string>;
+    isRecording: () => Promise<boolean>;
     on: <T extends AudioEvent>(event: T, callback: EventCallback<T extends keyof AudioEventDataMap ? AudioEventDataMap[T] : any>) => void;
     addListener: <T extends AudioEvent>(event: T, callback: EventCallback<T extends keyof AudioEventDataMap ? AudioEventDataMap[T] : any>) => void;
     removeListener: (event: AudioEvent) => void;
