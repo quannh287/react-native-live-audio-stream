@@ -91,10 +91,7 @@ public class RNLiveAudioStreamService extends Service {
 
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             Log.d(TAG, "Received ACTION_STOP; stopping service");
-            stopRecording();
-            try { stopForeground(true); } catch (Exception ignore) {}
-            releaseWakeLockImmediate();
-            stopSelfResult(this.lastStartId);
+            stopServiceGracefully();
             return START_NOT_STICKY;
         }
         if (cachedNotification != null) {
@@ -110,18 +107,7 @@ public class RNLiveAudioStreamService extends Service {
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         Log.d(TAG, "onTaskRemoved: user removed task; stopping service");
-
-        stopRecording();
-        releaseWakeLockImmediate();
-
-        try {
-            stopForeground(true);
-        } catch (Exception ignore) {}
-
-
-        if (!stopSelfResult(this.lastStartId)) {
-            stopSelf();
-        }
+        stopServiceGracefully();
 
         super.onTaskRemoved(rootIntent);
     }
@@ -129,9 +115,7 @@ public class RNLiveAudioStreamService extends Service {
     @Override
     public void onDestroy() {
         Log.d(TAG, "onDestroy");
-        stopRecording();
-        try { stopForeground(true); } catch (Exception ignore) {}
-        releaseWakeLockImmediate();
+        stopServiceGracefully();
         if (audioHandlerThread != null) {
             audioHandlerThread.quitSafely();
             try { audioHandlerThread.join(500); } catch (InterruptedException ignored) {}
@@ -218,6 +202,8 @@ public class RNLiveAudioStreamService extends Service {
                 PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
                 if (powerManager != null) {
                     wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RNLiveAudioStream:WakeLock");
+                    // Avoid reference-counting to ensure a single balanced release on shutdown
+                    wakeLock.setReferenceCounted(false);
                     wakeLock.acquire();
                     Log.d(TAG, "Wake lock acquired");
                 }
@@ -372,38 +358,62 @@ public class RNLiveAudioStreamService extends Service {
         // Skip first buffers to eliminate click sound
         final int SKIP_BUFFER_COUNT = 2;
 
-        while (isRecording && audioRecord != null && !Thread.currentThread().isInterrupted()) {
-            try {
-                int bytesRead = audioRecord.read(buffer, 0, buffer.length);
+        try {
+            while (isRecording && audioRecord != null && !Thread.currentThread().isInterrupted()) {
+                try {
+                    int bytesRead = audioRecord.read(buffer, 0, buffer.length);
 
-                if (bytesRead > 0) {
-                    if (++bufferCount > SKIP_BUFFER_COUNT) {
-                        String base64Data = Base64.encodeToString(buffer, 0, bytesRead, Base64.NO_WRAP);
-                        AudioEventEmitter.sendAudioData(base64Data);
+                    if (bytesRead > 0) {
+                        if (++bufferCount > SKIP_BUFFER_COUNT) {
+                            String base64Data = Base64.encodeToString(buffer, 0, bytesRead, Base64.NO_WRAP);
+                            AudioEventEmitter.sendAudioData(base64Data);
+                        }
+                    } else if (bytesRead < 0) {
+                        Log.e(TAG, "Error reading audio data: " + bytesRead);
+                        AudioEventEmitter.sendError("Error reading audio data: " + bytesRead);
+                        break;
                     }
-                } else if (bytesRead < 0) {
-                    Log.e(TAG, "Error reading audio data: " + bytesRead);
-                    AudioEventEmitter.sendError("Error reading audio data: " + bytesRead);
+                } catch (Exception e) {
+                    if (!Thread.currentThread().isInterrupted()) {
+                        Log.e(TAG, "Exception in recording thread", e);
+                        AudioEventEmitter.sendError("Recording error: " + e.getMessage());
+                    }
                     break;
                 }
-            } catch (Exception e) {
-                if (!Thread.currentThread().isInterrupted()) {
-                    Log.e(TAG, "Exception in recording thread", e);
-                    AudioEventEmitter.sendError("Recording error: " + e.getMessage());
-                }
-                break;
             }
+        } finally {
+            Log.d(TAG, "Recording thread finished");
+            // Ensure the service stops itself when recording ends or errors occur
+            new Handler(getMainLooper()).post(() -> {
+                stopServiceGracefully();
+            });
         }
-
-        Log.d(TAG, "Recording thread finished");
     }
 
-    @Override
-    public void onDestroy() {
+    private void clearNotification() {
+        // Stop foreground and explicitly cancel notification to ensure it's cleared
         try {
-            isRecording = false;
-            isInitializing = false;
+            stopForeground(true);
         } catch (Exception ignore) {}
-        super.onDestroy();
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.cancel(NOTIFICATION_ID);
+            }
+        } catch (Exception ignore) {}
+        cachedNotification = null;
+    }
+
+    private void stopServiceGracefully() {
+        try {
+            stopRecording();
+        } catch (Exception ignore) {}
+        clearNotification();
+        releaseWakeLockImmediate();
+        try {
+            if (!stopSelfResult(this.lastStartId)) {
+                stopSelf();
+            }
+        } catch (Exception ignore) {}
     }
 }
