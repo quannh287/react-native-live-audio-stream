@@ -166,18 +166,6 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule implemen
     }
 
     /**
-     * Android-only synchronous variant to read & clear the killed flag without Promise.
-     */
-    @ReactMethod(isBlockingSynchronousMethod = true)
-    public boolean consumeWasKilledFlagSync() {
-        try {
-            return RNLiveAudioStreamService.consumeWasKilledFlag(getReactApplicationContext());
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /**
      * Android-only: read flag without clearing (sync).
      */
     @ReactMethod(isBlockingSynchronousMethod = true)

@@ -23,10 +23,6 @@ declare module "react-native-live-audio-record" {
     removeListener: (event: AudioEvent) => void;
     removeAllListeners: () => void;
     /**
-     * Android-only: synchronous variant of consumeWasKilledFlag.
-     */
-    consumeWasKilledFlagSync: () => boolean;
-    /**
      * Android-only: read flag without clearing (sync).
      */
     getWasKilledFlagSync: () => boolean;

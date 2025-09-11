@@ -17,8 +17,6 @@ AudioRecord.init = options => RNLiveAudioStream.init(options);
 AudioRecord.start = () => RNLiveAudioStream.start();
 AudioRecord.stop = () => RNLiveAudioStream.stop();
 
-// Synchronous variant (Android only). Returns boolean immediately.
-AudioRecord.consumeWasKilledFlagSync = () => RNLiveAudioStream.consumeWasKilledFlagSync?.();
 // Read-only then clear manually (Android only)
 AudioRecord.getWasKilledFlagSync = () => RNLiveAudioStream.getWasKilledFlagSync?.();
 AudioRecord.clearWasKilledFlagSync = () => RNLiveAudioStream.clearWasKilledFlagSync?.();
