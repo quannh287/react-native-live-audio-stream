@@ -105,6 +105,7 @@ public class RNLiveAudioStreamService extends Service {
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         Log.d(TAG, "onTaskRemoved: user removed task; stopping service");
+        Log.d(TAG, "onTaskRemoved: setting KilledFlag=true");
         setKilledFlag();
         try { AudioEventEmitter.sendServiceState("stopped", "task_removed"); } catch (Exception ignore) {}
         stopServiceGracefully();
@@ -391,13 +392,16 @@ public class RNLiveAudioStreamService extends Service {
         try {
             SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             prefs.edit().putBoolean(KEY_APP_KILLED, true).apply();
+            Log.d(TAG, "KilledFlag set to true");
         } catch (Exception ignore) {}
     }
 
     public static boolean getWasKilledFlag(Context context) {
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-            return prefs.getBoolean(KEY_APP_KILLED, false);
+            boolean wasKilled = prefs.getBoolean(KEY_APP_KILLED, false);
+            Log.d(TAG, "KilledFlag getWasKilledFlag -> " + wasKilled);
+            return wasKilled;
         } catch (Exception ignore) {
             return false;
         }
@@ -407,6 +411,7 @@ public class RNLiveAudioStreamService extends Service {
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             prefs.edit().remove(KEY_APP_KILLED).apply();
+            Log.d(TAG, "KilledFlag clearWasKilledFlag: flag cleared");
         } catch (Exception ignore) {}
     }
 }
