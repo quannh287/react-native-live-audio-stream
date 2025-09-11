@@ -20,6 +20,9 @@ AudioRecord.stop = () => RNLiveAudioStream.stop();
 // Returns a promise<boolean>; true if last app session was killed by user (Android only)
 AudioRecord.consumeWasKilledFlag = () => RNLiveAudioStream.consumeWasKilledFlag?.();
 
+// Synchronous variant (Android only). Returns boolean immediately.
+AudioRecord.consumeWasKilledFlagSync = () => RNLiveAudioStream.consumeWasKilledFlagSync?.();
+
 const eventsMap = {
   data: AudioEvents.DATA,
   recordingState: AudioEvents.RECORDING_STATE,

@@ -26,6 +26,10 @@ declare module "react-native-live-audio-record" {
      * Android-only: read and clear flag indicating previous app session was user-killed.
      */
     consumeWasKilledFlag: () => Promise<boolean>;
+    /**
+     * Android-only: synchronous variant of consumeWasKilledFlag.
+     */
+    consumeWasKilledFlagSync: () => boolean;
   }
 
   export type AudioChannel = 1 | 2;
