@@ -8,11 +8,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application>
+    <!-- Remove android:stopWithTask="true" so that onTaskRemoved is always invoked on all devices, and handle stopping the recording manually -->
         <service
           android:name="com.imxiqi.rnliveaudiostream.RNLiveAudioStreamService"
           android:enabled="true"
           android:exported="false"
-          android:stopWithTask="true"
           android:foregroundServiceType="microphone" />
     </application>
 </manifest>
