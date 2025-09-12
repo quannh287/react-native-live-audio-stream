@@ -398,7 +398,6 @@ public class RNLiveAudioStreamService extends Service {
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             boolean wasKilled = prefs.getBoolean(KEY_APP_KILLED, false);
-            Log.d(TAG, "KilledFlag getWasKilledFlag -> " + wasKilled);
             return wasKilled;
         } catch (Exception ignore) {
             return false;
