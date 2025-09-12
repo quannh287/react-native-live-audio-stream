@@ -115,7 +115,6 @@ public class RNLiveAudioStreamService extends Service {
     public void onDestroy() {
         Log.d(TAG, "onDestroy");
         stopServiceGracefully();
-        setKilledFlag();
         if (audioHandlerThread != null) {
             audioHandlerThread.quitSafely();
             try { audioHandlerThread.join(500); } catch (InterruptedException ignored) {}
