@@ -16,7 +16,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
-import android.os.PowerManager;
+import android.content.SharedPreferences;
 import android.util.Base64;
 import android.util.Log;
 
@@ -31,12 +31,13 @@ public class RNLiveAudioStreamService extends Service {
     private static final int NOTIFICATION_ID = 1;
     private static final String CHANNEL_ID = "AudioRecordingChannel";
     private static final String ACTION_STOP = "com.imxiqi.rnliveaudiostream.ACTION_STOP";
+    private static final String PREFS_NAME = "RNLiveAudioStream";
+    private static final String KEY_APP_KILLED = "app_killed";
 
     private AudioRecord audioRecord;
     private volatile boolean isRecording = false;
     private volatile boolean isInitializing = false;
     private Thread recordingThread;
-    private PowerManager.WakeLock wakeLock;
     private AudioConfig audioConfig;
 
     private HandlerThread audioHandlerThread;
@@ -44,6 +45,8 @@ public class RNLiveAudioStreamService extends Service {
 
     private Notification cachedNotification;
     private int lastStartId = 0;
+
+
 
     public static void startService(ReactContext context) {
         Intent serviceIntent = new Intent(context, RNLiveAudioStreamService.class);
@@ -78,7 +81,6 @@ public class RNLiveAudioStreamService extends Service {
         audioHandler = new Handler(audioHandlerThread.getLooper());
         createNotificationChannelAsync();
         preCreateNotification();
-        acquireWakeLockAsync();
     }
 
     @Override
@@ -87,10 +89,7 @@ public class RNLiveAudioStreamService extends Service {
 
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             Log.d(TAG, "Received ACTION_STOP; stopping service");
-            stopRecording();
-            try { stopForeground(true); } catch (Exception ignore) {}
-            releaseWakeLockImmediate();
-            stopSelfResult(this.lastStartId);
+            stopServiceGracefully();
             return START_NOT_STICKY;
         }
         if (cachedNotification != null) {
@@ -106,18 +105,8 @@ public class RNLiveAudioStreamService extends Service {
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         Log.d(TAG, "onTaskRemoved: user removed task; stopping service");
-
-        stopRecording();
-        releaseWakeLockImmediate();
-
-        try {
-            stopForeground(true);
-        } catch (Exception ignore) {}
-
-
-        if (!stopSelfResult(this.lastStartId)) {
-            stopSelf();
-        }
+        setKilledFlag();
+        stopServiceGracefully();
 
         super.onTaskRemoved(rootIntent);
     }
@@ -125,9 +114,8 @@ public class RNLiveAudioStreamService extends Service {
     @Override
     public void onDestroy() {
         Log.d(TAG, "onDestroy");
-        stopRecording();
-        try { stopForeground(true); } catch (Exception ignore) {}
-        releaseWakeLockImmediate();
+        stopServiceGracefully();
+        setKilledFlag();
         if (audioHandlerThread != null) {
             audioHandlerThread.quitSafely();
             try { audioHandlerThread.join(500); } catch (InterruptedException ignored) {}
@@ -208,34 +196,7 @@ public class RNLiveAudioStreamService extends Service {
         return null;
     }
 
-    private void acquireWakeLockAsync() {
-        audioHandler.post(() -> {
-            try {
-                PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
-                if (powerManager != null) {
-                    wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "RNLiveAudioStream:WakeLock");
-                    wakeLock.acquire();
-                    Log.d(TAG, "Wake lock acquired");
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error acquiring wake lock", e);
-            }
-        });
-    }
 
-    // Immediate release used for shutdown paths to avoid handler post delays
-    private void releaseWakeLockImmediate() {
-        try {
-            if (wakeLock != null && wakeLock.isHeld()) {
-                wakeLock.release();
-                Log.d(TAG, "Wake lock released (immediate)");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error releasing wake lock (immediate)", e);
-        } finally {
-            wakeLock = null;
-        }
-    }
 
     private void startRecordingAsync() {
         if (isRecording || isInitializing) {
@@ -368,29 +329,88 @@ public class RNLiveAudioStreamService extends Service {
         // Skip first buffers to eliminate click sound
         final int SKIP_BUFFER_COUNT = 2;
 
-        while (isRecording && audioRecord != null && !Thread.currentThread().isInterrupted()) {
-            try {
-                int bytesRead = audioRecord.read(buffer, 0, buffer.length);
+        try {
+            while (isRecording && audioRecord != null && !Thread.currentThread().isInterrupted()) {
+                try {
+                    int bytesRead = audioRecord.read(buffer, 0, buffer.length);
 
-                if (bytesRead > 0) {
-                    if (++bufferCount > SKIP_BUFFER_COUNT) {
-                        String base64Data = Base64.encodeToString(buffer, 0, bytesRead, Base64.NO_WRAP);
-                        AudioEventEmitter.sendAudioData(base64Data);
+                    if (bytesRead > 0) {
+                        if (++bufferCount > SKIP_BUFFER_COUNT) {
+                            String base64Data = Base64.encodeToString(buffer, 0, bytesRead, Base64.NO_WRAP);
+                            AudioEventEmitter.sendAudioData(base64Data);
+                        }
+                    } else if (bytesRead < 0) {
+                        Log.e(TAG, "Error reading audio data: " + bytesRead);
+                        AudioEventEmitter.sendError("Error reading audio data: " + bytesRead);
+                        break;
                     }
-                } else if (bytesRead < 0) {
-                    Log.e(TAG, "Error reading audio data: " + bytesRead);
-                    AudioEventEmitter.sendError("Error reading audio data: " + bytesRead);
+                } catch (Exception e) {
+                    if (!Thread.currentThread().isInterrupted()) {
+                        Log.e(TAG, "Exception in recording thread", e);
+                        AudioEventEmitter.sendError("Recording error: " + e.getMessage());
+                    }
                     break;
                 }
-            } catch (Exception e) {
-                if (!Thread.currentThread().isInterrupted()) {
-                    Log.e(TAG, "Exception in recording thread", e);
-                    AudioEventEmitter.sendError("Recording error: " + e.getMessage());
-                }
-                break;
             }
+        } finally {
+            Log.d(TAG, "Recording thread finished");
+            // Ensure the service stops itself when recording ends or errors occur
+            new Handler(getMainLooper()).post(() -> {
+                stopServiceGracefully();
+            });
         }
+    }
 
-        Log.d(TAG, "Recording thread finished");
+    private void clearNotification() {
+        // Stop foreground and explicitly cancel notification to ensure it's cleared
+        try {
+            stopForeground(true);
+        } catch (Exception ignore) {}
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.cancel(NOTIFICATION_ID);
+            }
+        } catch (Exception ignore) {}
+        cachedNotification = null;
+    }
+
+    private void stopServiceGracefully() {
+        try {
+            stopRecording();
+        } catch (Exception ignore) {}
+        clearNotification();
+        try {
+            if (!stopSelfResult(this.lastStartId)) {
+                stopSelf();
+            }
+        } catch (Exception ignore) {}
+    }
+
+    private void setKilledFlag() {
+        try {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit().putBoolean(KEY_APP_KILLED, true).apply();
+            Log.d(TAG, "KilledFlag set to true");
+        } catch (Exception ignore) {}
+    }
+
+    public static boolean getWasKilledFlag(Context context) {
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            boolean wasKilled = prefs.getBoolean(KEY_APP_KILLED, false);
+            Log.d(TAG, "KilledFlag getWasKilledFlag -> " + wasKilled);
+            return wasKilled;
+        } catch (Exception ignore) {
+            return false;
+        }
+    }
+
+    public static void clearWasKilledFlag(Context context) {
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit().remove(KEY_APP_KILLED).apply();
+            Log.d(TAG, "KilledFlag clearWasKilledFlag: flag cleared");
+        } catch (Exception ignore) {}
     }
 }
