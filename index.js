@@ -9,20 +9,31 @@ export const AudioEvents = {
   DATA: 'data',
   RECORDING_STATE: 'recordingState',
   ERROR: 'error',
-  // Android-only: emitted when native service stops/killed with a reason
-  SERVICE_STATE: 'serviceState',
 };
 
 AudioRecord.init = options => RNLiveAudioStream.init(options);
 AudioRecord.start = () => RNLiveAudioStream.start();
 AudioRecord.stop = () => RNLiveAudioStream.stop();
 
+// Read-only then clear manually (Android only)
+AudioRecord.getWasKilledFlagSync = () => {
+  if (Platform.OS === 'android') {
+    return RNLiveAudioStream.getWasKilledFlagSync?.()
+  }
+  return false
+}
+AudioRecord.clearWasKilledFlagSync = () => {
+  if (Platform.OS === 'android') {
+    return RNLiveAudioStream.clearWasKilledFlagSync?.()
+  } else {
+    console.warn('clearWasKilledFlagSync is not supported on this platform')
+  }
+};
+
 const eventsMap = {
   data: AudioEvents.DATA,
   recordingState: AudioEvents.RECORDING_STATE,
   error: AudioEvents.ERROR,
-  // Android-only
-  serviceState: AudioEvents.SERVICE_STATE,
 };
 
 AudioRecord.on = (event, callback) => {

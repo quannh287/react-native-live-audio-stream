@@ -165,6 +165,25 @@ public class RNLiveAudioStreamModule extends ReactContextBaseJavaModule implemen
         }
     }
 
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public boolean getWasKilledFlagSync() {
+        try {
+            boolean value = RNLiveAudioStreamService.getWasKilledFlag(getReactApplicationContext());
+            Log.d("RNLiveAudioStreamModule", "getWasKilledFlagSync -> " + value);
+            return value;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public void clearWasKilledFlagSync() {
+        try {
+            Log.d("RNLiveAudioStreamModule", "clearWasKilledFlagSync called");
+            RNLiveAudioStreamService.clearWasKilledFlag(getReactApplicationContext());
+        } catch (Exception ignore) {}
+    }
+
     private boolean hasAudioPermission() {
         return ContextCompat.checkSelfPermission(reactContext,
                 android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
